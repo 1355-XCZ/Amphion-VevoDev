@@ -109,13 +109,14 @@ case "$CURR_TRF" in
   ;;
 esac
 
-# 修复 LangSegment 版本不兼容：强制安装兼容版本
-echo "[dep] fixing LangSegment compatibility" | tee -a "${LOG_DIR}/run-info.txt"
-"$PYTHON_BIN" -m pip uninstall -y LangSegment 2>/dev/null || true
-"$PYTHON_BIN" -m pip install "LangSegment==2.0.0" | tee -a "${LOG_DIR}/run-info.txt" || {
-  echo "[dep] LangSegment 2.0.0 failed, trying 1.x" | tee -a "${LOG_DIR}/run-info.txt"
-  "$PYTHON_BIN" -m pip install "LangSegment<2.0" | tee -a "${LOG_DIR}/run-info.txt"
-}
+# 修复 LangSegment 版本不兼容：已手动安装兼容版本，跳过重装
+echo "[dep] LangSegment compatibility: using existing version" | tee -a "${LOG_DIR}/run-info.txt"
+# 注释掉自动重装逻辑，因为会破坏已安装的工作版本
+# "$PYTHON_BIN" -m pip uninstall -y LangSegment 2>/dev/null || true
+# "$PYTHON_BIN" -m pip install "LangSegment==2.0.0" | tee -a "${LOG_DIR}/run-info.txt" || {
+#   echo "[dep] LangSegment 2.0.0 failed, trying 1.x" | tee -a "${LOG_DIR}/run-info.txt"
+#   "$PYTHON_BIN" -m pip install "LangSegment<2.0" | tee -a "${LOG_DIR}/run-info.txt"
+# }
 
 # g2p 依赖确保安装
 for PKG in pypinyin jieba cn2an g2p_en phonemizer pyopenjtalk pykakasi; do
