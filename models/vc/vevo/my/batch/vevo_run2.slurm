@@ -109,17 +109,15 @@ case "$CURR_TRF" in
   ;;
 esac
 
-# 额外：缺失 LangSegment 则自动安装（用于 TTS g2p）
-if ! "$PYTHON_BIN" - >/dev/null 2>&1 <<'PY'
-import importlib, sys
-sys.exit(0 if importlib.util.find_spec('LangSegment') else 1)
-PY
-then
-  echo "[dep] installing LangSegment for TTS g2p" | tee -a "${LOG_DIR}/run-info.txt"
-  "$PYTHON_BIN" -m pip install LangSegment | tee -a "${LOG_DIR}/run-info.txt"
-fi
+# 修复 LangSegment 版本不兼容：强制安装兼容版本
+echo "[dep] fixing LangSegment compatibility" | tee -a "${LOG_DIR}/run-info.txt"
+"$PYTHON_BIN" -m pip uninstall -y LangSegment 2>/dev/null || true
+"$PYTHON_BIN" -m pip install "LangSegment==2.0.0" | tee -a "${LOG_DIR}/run-info.txt" || {
+  echo "[dep] LangSegment 2.0.0 failed, trying 1.x" | tee -a "${LOG_DIR}/run-info.txt"
+  "$PYTHON_BIN" -m pip install "LangSegment<2.0" | tee -a "${LOG_DIR}/run-info.txt"
+}
 
-# 额外：缺失常用 g2p 依赖则安装（避免 TTS 链条缺包）
+# g2p 依赖确保安装
 for PKG in pypinyin jieba cn2an g2p_en phonemizer pyopenjtalk pykakasi; do
   if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('${PKG}') else 1)" >/dev/null 2>&1; then
     echo "[dep] installing ${PKG}" | tee -a "${LOG_DIR}/run-info.txt"
@@ -171,57 +169,20 @@ except Exception as e:
     print('[dep] torchvision check skipped:', e)
 PY
 
-# LangSegment 兼容性补丁：无论安装版本如何，注入完整 shim 覆盖所需符号
-"$PYTHON_BIN" - <<PY
-import os
-shim_root = os.environ.get('SHIM_ROOT')
-pkg_dir = os.path.join(shim_root, 'LangSegment') if shim_root else None
-if pkg_dir:
-    os.makedirs(pkg_dir, exist_ok=True)
-    with open(os.path.join(pkg_dir, '__init__.py'), 'w') as f:
-        f.write('''\
-_filters = ['en']
-
-def setfilters(fs):
-    global _filters
-    if isinstance(fs, (list, tuple)) and fs:
-        _filters = list(fs)
-
-def getfilters():
-    return list(_filters)
-
-def setLangfilters(fs):
-    # 某些版本使用该名称
-    return setfilters(fs)
-
-def getLangfilters():
-    return getfilters()
-
-def getTexts(text):
-    # 简单切分：整体文本按当前首选语言
-    lang = _filters[0] if _filters else 'en'
-    return [{'text': text, 'lang': lang}]
-
-def classify(text):
-    # 返回首选语言
-    return _filters[0] if _filters else 'en'
-
-def getCounts(text):
-    return {(_filters[0] if _filters else 'en'): len(text or '')}
-
-def printList(lst):
-    try:
-        print(lst)
-    except Exception:
-        pass
-''')
-    print('[dep] LangSegment shim installed at', pkg_dir)
-else:
-    print('[dep] LangSegment shim skipped (no SHIM_ROOT)')
+# 验证 LangSegment 修复是否成功
+"$PYTHON_BIN" - <<'PY'
+try:
+    import LangSegment
+    # 测试关键函数是否存在
+    funcs = ['setfilters', 'getTexts']
+    missing = [f for f in funcs if not hasattr(LangSegment, f)]
+    if missing:
+        print(f'[dep] LangSegment still missing: {missing}')
+    else:
+        print('[dep] LangSegment verification passed')
+except Exception as e:
+    print(f'[dep] LangSegment verification failed: {e}')
 PY
-
-# 将 shim 目录插入 PYTHONPATH（优先级高于 site-packages）
-export PYTHONPATH="${SHIM_ROOT}:${PYTHONPATH}"
 
 # 若 monotonic_align 扩展不可用则自动编译安装（Cython）
 if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('monotonic_align.core') else 1)" >/dev/null 2>&1; then
