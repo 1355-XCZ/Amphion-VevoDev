@@ -72,6 +72,38 @@ echo "PYTHON_BIN: $PYTHON_BIN" | tee -a "${LOG_DIR}/run-info.txt"
 # module -t avail espeak-ng>/dev/null 2>&1 && module load espeak-ng>/dev/null 2>&1 || true
 
 #############################
+# ===== 预下载模型权重  =====
+#############################
+# 首次运行建议开启（默认 1）；设置 PREFETCH=0 可跳过
+PREFETCH=${PREFETCH:-1}
+if [ "$PREFETCH" = "1" ]; then
+  echo "==== PREFETCH CKPTS ====" | tee -a "${LOG_DIR}/run-info.txt"
+  cd "${CODE_DIR}"
+  NEED=0
+  [ -d "./ckpts/Vevo/tokenizer/vq8192" ] || NEED=1
+  [ -d "./ckpts/Vevo/acoustic_modeling/Vocoder" ] || NEED=1
+  if [ "$NEED" = "1" ]; then
+    "$PYTHON_BIN" - <<'PY'
+from huggingface_hub import snapshot_download
+cache_dir = "./ckpts/Vevo"
+patterns = [
+    "tokenizer/vq8192/*",
+    "tokenizer/vq32/*",
+    "contentstyle_modeling/Vq32ToVq8192/*",
+    "contentstyle_modeling/PhoneToVq8192/*",
+    "acoustic_modeling/Vq8192ToMels/*",
+    "acoustic_modeling/Vocoder/*",
+]
+snapshot_download(repo_id="amphion/Vevo", repo_type="model",
+                  cache_dir=cache_dir, allow_patterns=patterns)
+print("[prefetch] All Vevo ckpts ready in", cache_dir)
+PY
+  else
+    echo "[prefetch] ckpts already present, skipping" | tee -a "${LOG_DIR}/run-info.txt"
+  fi
+fi
+
+#############################
 # ===== 运行前信息快照  =====
 #############################
 echo "==== RUN INFO ====" | tee -a "${LOG_DIR}/run-info.txt"
@@ -103,11 +135,27 @@ cd "${CODE_DIR}"
 WAV_DIR="models/vc/vevo/wav"
 mkdir -p "$WAV_DIR"
 
+# 如缺少示例输入音频，则自动生成占位测试音频，避免 FileNotFoundError
+if [ ! -f "${WAV_DIR}/source.wav" ] || [ ! -f "${WAV_DIR}/arabic_male.wav" ] || [ ! -f "${WAV_DIR}/mandarin_female.wav" ]; then
+  "$PYTHON_BIN" - <<'PY'
+import numpy as np, soundfile as sf, os
+base=os.path.join('models','vc','vevo','wav')
+os.makedirs(base, exist_ok=True)
+sr=24000
+t=np.linspace(0,0.6,int(sr*0.6),endpoint=False)
+sig=np.sin(2*np.pi*440*t).astype(np.float32)
+sf.write(os.path.join(base,'source.wav'),sig,sr)
+sf.write(os.path.join(base,'arabic_male.wav'),sig*0.8,sr)
+sf.write(os.path.join(base,'mandarin_female.wav'),sig*0.6,sr)
+print('Prepared placeholder wavs in', base)
+PY
+fi
+
 for mode in timbre style voice tts; do
   echo "==== Running VEVO_MODE=$mode ====" | tee -a "${LOG_DIR}/run-info.txt"
 
-  # 清空旧 wav，避免不同模式的输出混淆
-  rm -f "${WAV_DIR}"/*.wav 2>/dev/null || true
+  # 仅清理旧输出，保留示例与输入，避免删除必要输入导致 FileNotFoundError
+  rm -f "${WAV_DIR}"/output_*.wav 2>/dev/null || true
 
   case "$mode" in
     timbre) "$PYTHON_BIN" -m models.vc.vevo.infer_vevotimbre ;;
