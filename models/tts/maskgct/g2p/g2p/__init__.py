@@ -7,6 +7,12 @@ from models.tts.maskgct.g2p.g2p import cleaners
 from tokenizers import Tokenizer
 from models.tts.maskgct.g2p.g2p.text_tokenizers import TextTokenizer
 import LangSegment
+# [源代码修改][2025-08-20] 兼容性修复：某些版本的 LangSegment 缺少 setLangfilters/getLangfilters
+# 兼容性修复：某些版本的 LangSegment 缺少 setLangfilters/getLangfilters
+if not hasattr(LangSegment, 'setLangfilters'):
+    LangSegment.setLangfilters = lambda x: None  # 空函数
+if not hasattr(LangSegment, 'getLangfilters'):
+    LangSegment.getLangfilters = lambda: []  # 返回空列表
 import json
 import re
 
