@@ -16,14 +16,20 @@ if ! conda env list | grep -q "^$ENV_NAME "; then
     exit 1
 fi
 
-# 激活环境
+# 初始化并激活环境
+echo "初始化conda..."
+eval "$(conda shell.bash hook)"
+
 echo "激活conda环境: $ENV_NAME"
 conda activate $ENV_NAME
 
 # 验证环境激活
 if [ "$CONDA_DEFAULT_ENV" != "$ENV_NAME" ]; then
-    echo "❌ 环境激活失败，请手动激活:"
+    echo "❌ 环境激活失败"
+    echo "当前环境: $CONDA_DEFAULT_ENV"
+    echo "请手动激活环境后再运行脚本:"
     echo "conda activate $ENV_NAME"
+    echo "./setup_vevo_conda.sh"
     exit 1
 fi
 

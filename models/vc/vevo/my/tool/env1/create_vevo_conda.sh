@@ -30,7 +30,10 @@ fi
 echo "创建新的conda环境: $ENV_NAME"
 conda create -n $ENV_NAME python=3.11 -y
 
-# 激活环境
+# 初始化并激活环境
+echo "初始化conda..."
+eval "$(conda shell.bash hook)"
+
 echo "激活conda环境..."
 conda activate $ENV_NAME
 
