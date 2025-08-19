@@ -30,9 +30,8 @@ CONDA_ENV=vevo_env
 # 统一创建项目根 logs（给 Slurm -o/-e 用）
 mkdir -p "${PROJECT_ROOT}/logs"
 
-# 模型/权重缓存放项目目录
+# 模型/权重缓存放项目目录（仅设置 HF_HOME，避免 transformers 弃用警告）
 export HF_HOME="${PROJECT_ROOT}/.cache/huggingface"
-export TRANSFORMERS_CACHE="${HF_HOME}"
 export TORCH_HOME="${PROJECT_ROOT}/.cache/torch"
 mkdir -p "${HF_HOME}" "${TORCH_HOME}"
 
@@ -60,6 +59,12 @@ conda activate "${CONDA_ENV}"
 # 避免 set -u 下 PYTHONPATH 未定义导致报错
 : "${PYTHONPATH:=}"
 export PYTHONPATH="${CODE_DIR}:${PYTHONPATH}"
+
+# 选用当前环境的 python 可执行文件，避免落到系统 python
+echo "CONDA_PREFIX: ${CONDA_PREFIX:-unset}" | tee -a "${LOG_DIR}/run-info.txt"
+PYTHON_BIN="${CONDA_PREFIX:-}/bin/python"
+[ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(which python)"
+echo "PYTHON_BIN: $PYTHON_BIN" | tee -a "${LOG_DIR}/run-info.txt"
 
 # （已移除）自动加载系统模块以避免噪声日志；如需可手动开启
 # module -t avail ffmpeg   >/dev/null 2>&1 && module load ffmpeg   >/dev/null 2>&1 || true
@@ -105,10 +110,10 @@ for mode in timbre style voice tts; do
   rm -f "${WAV_DIR}"/*.wav 2>/dev/null || true
 
   case "$mode" in
-    timbre) python -m models.vc.vevo.infer_vevotimbre ;;
-    style)  python -m models.vc.vevo.infer_vevostyle  ;;
-    voice)  python -m models.vc.vevo.infer_vevovoice  ;;
-    tts)    python -m models.vc.vevo.infer_vevotts    ;;  # 若缺系统依赖可能不会产出
+    timbre) "$PYTHON_BIN" -m models.vc.vevo.infer_vevotimbre ;;
+    style)  "$PYTHON_BIN" -m models.vc.vevo.infer_vevostyle  ;;
+    voice)  "$PYTHON_BIN" -m models.vc.vevo.infer_vevovoice  ;;
+    tts)    "$PYTHON_BIN" -m models.vc.vevo.infer_vevotts    ;;  # 若缺系统依赖可能不会产出
   esac
 
   # 收集产物到各自目录
