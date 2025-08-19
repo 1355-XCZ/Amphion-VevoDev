@@ -107,11 +107,16 @@ PY
 echo "==== INFER SMOKE TEST ===="
 WAV_DIR="${CODE_DIR}/models/vc/vevo/wav"
 mkdir -p "$WAV_DIR"
+export WAV_DIR  # 传递到 Python 子进程
 "$PYTHON_BIN" - <<'PY'
 import numpy as np, soundfile as sf, os
-sr=24000; t=np.linspace(0,0.6,int(sr*0.6),endpoint=False)
+sr=24000
+t=np.linspace(0,0.6,int(sr*0.6),endpoint=False)
 sig=np.sin(2*np.pi*440*t).astype(np.float32)
 base=os.environ.get('WAV_DIR')
+if not base:
+    base=os.path.join('.', 'models','vc','vevo','wav')
+    os.makedirs(base, exist_ok=True)
 sf.write(os.path.join(base,'source.wav'),sig,sr)
 sf.write(os.path.join(base,'arabic_male.wav'),sig*0.8,sr)
 sf.write(os.path.join(base,'mandarin_female.wav'),sig*0.6,sr)
