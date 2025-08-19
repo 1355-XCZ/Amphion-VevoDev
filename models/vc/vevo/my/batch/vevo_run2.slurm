@@ -37,6 +37,17 @@ mkdir -p "${HF_HOME}" "${TORCH_HOME}"
 
 export TMPDIR=${TMPDIR:-/tmp}
 
+# 线程亲和性与并发控制，降低 ORT/BLAS 亲和性报错与资源争用
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+export BLIS_NUM_THREADS=${BLIS_NUM_THREADS:-1}
+export NUMEXPR_NUM_THREADS=${NUMEXPR_NUM_THREADS:-1}
+export VECLIB_MAXIMUM_THREADS=${VECLIB_MAXIMUM_THREADS:-1}
+export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
+export KMP_AFFINITY=${KMP_AFFINITY:-disabled}
+export ORT_NUM_THREADS=${ORT_NUM_THREADS:-1}
+
 #############################
 # ===== 生成本次运行目录 =====
 #############################
@@ -93,6 +104,78 @@ case "$CURR_TRF" in
     echo "[dep] transformers now: ${NEW_TRF}" | tee -a "${LOG_DIR}/run-info.txt"
   ;;
 esac
+
+# 额外：缺失 LangSegment 则自动安装（用于 TTS g2p）
+if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
+import importlib
+import sys
+sys.exit(0 if importlib.util.find_spec('LangSegment') else 1)
+PY
+then
+  echo "[dep] installing LangSegment for TTS g2p" | tee -a "${LOG_DIR}/run-info.txt"
+  "$PYTHON_BIN" -m pip install LangSegment | tee -a "${LOG_DIR}/run-info.txt"
+fi
+
+# 额外：缺失常用 g2p 依赖则安装（避免 TTS 链条缺包）
+for PKG in pypinyin jieba cn2an g2p_en phonemizer pyopenjtalk pykakasi; do
+  if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('${PKG}') else 1)" >/dev/null 2>&1; then
+    echo "[dep] installing ${PKG}" | tee -a "${LOG_DIR}/run-info.txt"
+    "$PYTHON_BIN" -m pip install "${PKG}" | tee -a "${LOG_DIR}/run-info.txt" || true
+  fi
+done
+
+# 依赖快速自检与修复：核心三方与扩展（缺则安装）
+REQ_PKGS=(
+  json5 ruamel.yaml easydict huggingface_hub tqdm
+  librosa soundfile ffmpeg-python onnxruntime
+  encodec vocos
+)
+for PKG in "${REQ_PKGS[@]}"; do
+  if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('${PKG.split(".")[0]}') else 1)" >/dev/null 2>&1; then
+    echo "[dep] installing ${PKG}" | tee -a "${LOG_DIR}/run-info.txt"
+    "$PYTHON_BIN" -m pip install "${PKG}" | tee -a "${LOG_DIR}/run-info.txt" || true
+  fi
+done
+
+# 对齐 torchvision 版本以匹配 torch（避免经典不兼容）
+"$PYTHON_BIN" - <<'PY'
+import re, subprocess, sys
+import importlib
+def vtuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+try:
+    import torch
+    tv = getattr(torch, '__version__', '0.0.0')
+    tmaj, tmin = vtuple(tv)[:2]
+    import importlib.util
+    need = None
+    if tmaj==2 and tmin>=5:
+        # torch>=2.5 建议 torchvision 0.20.x
+        need = '0.20.1'
+    if need:
+        ok = False
+        if importlib.util.find_spec('torchvision'):
+            import torchvision
+            ok = vtuple(torchvision.__version__)[0:2] == (0,20)
+        if not ok:
+            print('[dep] fixing torchvision to', need)
+            subprocess.run([sys.executable,'-m','pip','install',f'torchvision=={need}'], check=False)
+            import importlib as _il; _il.invalidate_caches()
+except Exception as e:
+    print('[dep] torchvision check skipped:', e)
+PY
+
+# 若 monotonic_align 扩展不可用则自动编译安装（Cython）
+if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('monotonic_align.core') else 1)" >/dev/null 2>&1; then
+  echo "[dep] building monotonic_align" | tee -a "${LOG_DIR}/run-info.txt"
+  (
+    cd "${CODE_DIR}/modules/monotonic_align" && \
+    mkdir -p monotonic_align && [ -f monotonic_align/__init__.py ] || echo "" > monotonic_align/__init__.py && \
+    "$PYTHON_BIN" -m pip install --upgrade pip setuptools wheel cython && \
+    "$PYTHON_BIN" setup.py build_ext --inplace && \
+    "$PYTHON_BIN" -m pip install -e .
+  ) || echo "[dep] monotonic_align build failed (will continue)" | tee -a "${LOG_DIR}/run-info.txt"
+fi
 
 #############################
 # ===== 预下载模型权重  =====
