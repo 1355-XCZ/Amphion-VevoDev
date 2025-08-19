@@ -108,6 +108,46 @@ fi
 #############################
 # ===== 依赖版本预检  =====
 #############################
+# 依据 Spartan Modules 文档，尽量探测并加载常用音频工具模块（存在则加载，不存在则跳过）
+# 参考: https://dashboard.hpc.unimelb.edu.au/software/modules/
+echo "[sys] probing optional audio modules (best-effort)" | tee -a "${LOG_DIR}/run-info.txt"
+try_load_mod() {
+  local name="$1"
+  if module try-load "$name" >/dev/null 2>&1; then
+    echo "[sys] optional module loaded: $name" | tee -a "${LOG_DIR}/run-info.txt"
+  else
+    echo "[sys] optional module not present or failed (skipped): $name" | tee -a "${LOG_DIR}/run-info.txt"
+  fi
+}
+
+# 常见工具：FFmpeg、SoX、libsndfile（名字以站点为准，try-load 不会中断）
+try_load_mod FFmpeg
+try_load_mod SoX
+try_load_mod libsndfile
+
+# 二进制就绪性快速检测
+for BIN in ffmpeg sox; do
+  if command -v "$BIN" >/dev/null 2>&1; then
+    echo "[sys] found binary: $(which "$BIN")" | tee -a "${LOG_DIR}/run-info.txt"
+    "$BIN" -version 2>&1 | head -1 | tee -a "${LOG_DIR}/run-info.txt" || true
+  else
+    echo "[sys] binary not found in PATH: $BIN (ok to skip if not needed)" | tee -a "${LOG_DIR}/run-info.txt"
+  fi
+done
+
+# Python 侧快速导入检测（仅记录，不中断）
+"$PYTHON_BIN" - <<'PY' 2>/dev/null | sed 's/^/[dep-check] /' | tee -a "${LOG_DIR}/run-info.txt" || true
+def check(mod):
+    import importlib
+    spec = importlib.util.find_spec(mod)
+    print(f"python import {mod}: {'OK' if spec else 'MISSING'}")
+for m in [
+    'librosa','soundfile','onnxruntime','encodec','vocos','phonemizer',
+    'g2p_en','jieba','cn2an','pypinyin','LangSegment','pyopenjtalk','pykakasi'
+]:
+    check(m)
+PY
+
 echo "==== DEP CHECK ====" | tee -a "${LOG_DIR}/run-info.txt"
 CURR_TRF=$("$PYTHON_BIN" - <<'PY'
 try:
