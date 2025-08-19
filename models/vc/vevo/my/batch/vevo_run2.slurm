@@ -11,7 +11,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH -c 1
 #SBATCH --mem=4G
-#SBATCH -t 00:10:00
+#SBATCH -t 00:15:00
 #SBATCH -J vevo-sanity
 #SBATCH -o /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.out
 #SBATCH -e /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.err
@@ -221,36 +221,10 @@ if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_s
 fi
 
 #############################
-# ===== 预下载模型权重  =====
+# (已移除) 预下载模型权重
+# 说明：Vevo 的推理脚本会在运行时用 huggingface_hub 自动下载所需权重，
+#       因此这里不再提前下载，避免脚本里出现网络依赖。
 #############################
-# 首次运行建议开启（默认 1）；设置 PREFETCH=0 可跳过
-PREFETCH=${PREFETCH:-1}
-if [ "$PREFETCH" = "1" ]; then
-  echo "==== PREFETCH CKPTS ====" | tee -a "${LOG_DIR}/run-info.txt"
-  cd "${CODE_DIR}"
-  NEED=0
-  [ -d "./ckpts/Vevo/tokenizer/vq8192" ] || NEED=1
-  [ -d "./ckpts/Vevo/acoustic_modeling/Vocoder" ] || NEED=1
-  if [ "$NEED" = "1" ]; then
-    "$PYTHON_BIN" - <<'PY'
-from huggingface_hub import snapshot_download
-cache_dir = "./ckpts/Vevo"
-patterns = [
-    "tokenizer/vq8192/*",
-    "tokenizer/vq32/*",
-    "contentstyle_modeling/Vq32ToVq8192/*",
-    "contentstyle_modeling/PhoneToVq8192/*",
-    "acoustic_modeling/Vq8192ToMels/*",
-    "acoustic_modeling/Vocoder/*",
-]
-snapshot_download(repo_id="amphion/Vevo", repo_type="model",
-                  cache_dir=cache_dir, allow_patterns=patterns)
-print("[prefetch] All Vevo ckpts ready in", cache_dir)
-PY
-  else
-    echo "[prefetch] ckpts already present, skipping" | tee -a "${LOG_DIR}/run-info.txt"
-  fi
-fi
 
 #############################
 # ===== 运行前信息快照  =====
@@ -284,39 +258,15 @@ cd "${CODE_DIR}"
 WAV_DIR="models/vc/vevo/wav"
 mkdir -p "$WAV_DIR"
 
-# 如缺少示例输入音频，则优先拉取官方示例音频（失败时再回退占位波形）
+# 不再在脚本中下载或生成占位音频；若缺示例则直接提示并退出
 if [ ! -f "${WAV_DIR}/source.wav" ] || [ ! -f "${WAV_DIR}/arabic_male.wav" ] || [ ! -f "${WAV_DIR}/mandarin_female.wav" ]; then
-  echo "[data] fetching official sample wavs from Amphion repo" | tee -a "${LOG_DIR}/run-info.txt"
-  URL_BASE="https://raw.githubusercontent.com/open-mmlab/Amphion/main/models/vc/vevo/wav"
-  fetch_sample() {
-    local name="$1"; local url="${URL_BASE}/${name}"; local out="${WAV_DIR}/${name}"
-    if command -v curl >/dev/null 2>&1; then
-      curl -fsSL --retry 3 -o "$out" "$url"
-    else
-      return 1
-    fi
-  }
-  # 尝试下载三个示例
-  ok=1
-  for f in source.wav arabic_male.wav mandarin_female.wav; do
-    [ -f "${WAV_DIR}/$f" ] || fetch_sample "$f" || ok=0
-  done
-  # 若仍缺失任何一个，则回退生成短占位音频，避免报错中断
-  if [ "$ok" = "0" ] || [ ! -f "${WAV_DIR}/source.wav" ] || [ ! -f "${WAV_DIR}/arabic_male.wav" ] || [ ! -f "${WAV_DIR}/mandarin_female.wav" ]; then
-    echo "[data] sample download failed or incomplete -> fallback to placeholders" | tee -a "${LOG_DIR}/run-info.txt"
-    "$PYTHON_BIN" - <<'PY'
-import numpy as np, soundfile as sf, os
-base=os.path.join('models','vc','vevo','wav')
-os.makedirs(base, exist_ok=True)
-sr=24000
-t=np.linspace(0,0.6,int(sr*0.6),endpoint=False)
-sig=np.sin(2*np.pi*440*t).astype(np.float32)
-sf.write(os.path.join(base,'source.wav'),sig,sr)
-sf.write(os.path.join(base,'arabic_male.wav'),sig*0.8,sr)
-sf.write(os.path.join(base,'mandarin_female.wav'),sig*0.6,sr)
-print('Prepared placeholder wavs in', base)
-PY
-  fi
+  echo "[data] required input wavs not found in ${WAV_DIR}" | tee -a "${LOG_DIR}/run-info.txt"
+  echo "[data] please place these files before submitting:" | tee -a "${LOG_DIR}/run-info.txt"
+  echo "       - source.wav (content)" | tee -a "${LOG_DIR}/run-info.txt"
+  echo "       - arabic_male.wav (style ref)" | tee -a "${LOG_DIR}/run-info.txt"
+  echo "       - mandarin_female.wav (timbre ref)" | tee -a "${LOG_DIR}/run-info.txt"
+  echo "[data] you can use official samples from Amphion repo: models/vc/vevo/wav" | tee -a "${LOG_DIR}/run-info.txt"
+  exit 1
 fi
 
 for mode in timbre style voice tts; do
