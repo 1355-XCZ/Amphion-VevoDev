@@ -13,7 +13,7 @@ echo "当前Python版本: $python_version"
 
 # 设置环境路径
 ENV_BASE_DIR="/data/gpfs/projects/punim2341/haoguangzhou/envs"
-ENV_NAME="vevo"
+ENV_NAME="vevo_env"
 ENV_PATH="$ENV_BASE_DIR/$ENV_NAME"
 
 echo "环境将创建在: $ENV_PATH"

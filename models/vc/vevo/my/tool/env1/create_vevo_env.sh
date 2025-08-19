@@ -7,7 +7,7 @@ set -e
 
 # 环境配置
 ENV_BASE_DIR="/data/gpfs/projects/punim2341/haoguangzhou/envs"
-ENV_NAME="vevo"
+ENV_NAME="vevo_env"
 ENV_PATH="$ENV_BASE_DIR/$ENV_NAME"
 
 echo "=== 快速创建VEVO环境 ==="

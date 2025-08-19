@@ -29,7 +29,7 @@ set -euo pipefail
 PROJECT_ROOT=/data/gpfs/projects/punim2341/haoguangzhou
 CODE_DIR="${PROJECT_ROOT}/voice/Amphion-VevoDev"
 RUNS_ROOT="${PROJECT_ROOT}/runs"
-CONDA_ENV=vevo
+CONDA_ENV=vevo_env
 
 # 统一创建项目根 logs（给 Slurm -o/-e 用）
 mkdir -p "${PROJECT_ROOT}/logs"
