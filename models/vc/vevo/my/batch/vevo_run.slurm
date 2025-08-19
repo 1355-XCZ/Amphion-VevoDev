@@ -60,6 +60,14 @@ module load Anaconda3/2024.02-1
 eval "$(conda shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
+# 确保 Python 能导入项目内模块（更稳健）
+export PYTHONPATH="${CODE_DIR}:${PYTHONPATH}"
+
+# 可选：若集群提供模块，可自动加载（不存在则跳过）
+module -t avail ffmpeg   >/dev/null 2>&1 && module load ffmpeg   || true
+module -t avail espeak   >/dev/null 2>&1 && module load espeak   || true
+module -t avail espeak-ng>/dev/null 2>&1 && module load espeak-ng|| true
+
 #############################
 # ===== 运行前信息快照  =====
 #############################
