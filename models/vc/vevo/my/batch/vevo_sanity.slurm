@@ -51,6 +51,12 @@ conda activate "${CONDA_ENV}"
 : "${PYTHONPATH:=}"
 export PYTHONPATH="${CODE_DIR}:${PYTHONPATH}"
 
+# 选用当前环境的 python 可执行文件，避免落到系统 python
+echo "CONDA_PREFIX: ${CONDA_PREFIX:-unset}"
+PYTHON_BIN="${CONDA_PREFIX:-}/bin/python"
+[ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(which python)"
+echo "PYTHON_BIN: $PYTHON_BIN"
+
 #############################
 # ===== 打印环境/GPU信息 =====
 #############################
@@ -64,7 +70,7 @@ command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi || true
 # ===== 关键模块导入测试 =====
 #############################
 cd "${CODE_DIR}"
-python - <<'PY'
+"$PYTHON_BIN" - <<'PY'
 import sys
 print('Python:', sys.version)
 
