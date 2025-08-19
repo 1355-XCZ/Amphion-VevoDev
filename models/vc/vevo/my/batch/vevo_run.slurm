@@ -75,7 +75,6 @@ command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi | tee -a "${LOG_DIR}/run-inf
 #############################
 record_stats() {
   my-job-stats -a -n -s -j "${SLURM_JOB_ID}" > "${STAT_DIR}/${SLURM_JOB_ID}.stats" 2>&1 || true
-  # 将统计摘要合并到运行期日志，方便一眼查看
   echo "==== my-job-stats summary ====" | tee -a "${LOG_DIR}/run-info.txt"
   tail -n +1 "${STAT_DIR}/${SLURM_JOB_ID}.stats" | tee -a "${LOG_DIR}/run-info.txt" || true
 }
@@ -104,7 +103,7 @@ for mode in timbre style voice tts; do
     style)  python -m models.vc.vevo.infer_vevostyle  ;;
     voice)  python -m models.vc.vevo.infer_vevovoice  ;;
     tts)    python -m models.vc.vevo.infer_vevotts    ;;  # 若缺系统依赖可能不会产出
-  endesac
+  esac
 
   # 收集产物到各自目录
   if ls "${WAV_DIR}"/*.wav >/dev/null 2>&1; then
