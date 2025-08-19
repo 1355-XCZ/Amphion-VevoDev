@@ -15,8 +15,8 @@
 #SBATCH --partition=gpu-l40s
 #SBATCH --gres=gpu:1
 #SBATCH -c 1
-#SBATCH --mem=2G
-#SBATCH -t 00:02:00
+#SBATCH --mem=4G
+#SBATCH -t 00:10:00
 #SBATCH -J vevo-sanity
 #SBATCH -o /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.out
 #SBATCH -e /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.err
@@ -33,9 +33,8 @@ CONDA_ENV=vevo_env
 
 mkdir -p "${PROJECT_ROOT}/logs"
 
-# HF/torch 缓存到项目目录，避免 HOME 爆仓
+# HF/torch 缓存到项目目录，避免 HOME 爆仓（仅设置 HF_HOME，避免 transformers 的弃用警告）
 export HF_HOME="${PROJECT_ROOT}/.cache/huggingface"
-export TRANSFORMERS_CACHE="${HF_HOME}"
 export TORCH_HOME="${PROJECT_ROOT}/.cache/torch"
 mkdir -p "${HF_HOME}" "${TORCH_HOME}"
 
@@ -103,6 +102,28 @@ __import__('models.vc.vevo.infer_vevotimbre')
 print('[OK] models.vc.vevo.infer_vevotimbre import')
 print('SUMMARY: OK')
 PY
+
+# 生成最小测试音频并尝试执行四个推理脚本（失败不终止，用于冒烟）
+echo "==== INFER SMOKE TEST ===="
+WAV_DIR="${CODE_DIR}/models/vc/vevo/wav"
+mkdir -p "$WAV_DIR"
+"$PYTHON_BIN" - <<'PY'
+import numpy as np, soundfile as sf, os
+sr=24000; t=np.linspace(0,0.6,int(sr*0.6),endpoint=False)
+sig=np.sin(2*np.pi*440*t).astype(np.float32)
+base=os.environ.get('WAV_DIR')
+sf.write(os.path.join(base,'source.wav'),sig,sr)
+sf.write(os.path.join(base,'arabic_male.wav'),sig*0.8,sr)
+sf.write(os.path.join(base,'mandarin_female.wav'),sig*0.6,sr)
+print('test wavs prepared in',base)
+PY
+
+set +e
+echo "-- timbre --";   "$PYTHON_BIN" -m models.vc.vevo.infer_vevotimbre   || echo "timbre failed"
+echo "-- style  --";   "$PYTHON_BIN" -m models.vc.vevo.infer_vevostyle    || echo "style failed"
+echo "-- voice  --";   "$PYTHON_BIN" -m models.vc.vevo.infer_vevovoice    || echo "voice failed"
+echo "-- tts    --";   "$PYTHON_BIN" -m models.vc.vevo.infer_vevotts      || echo "tts failed"
+set -e
 
 echo "==== SANITY DONE ===="
 
