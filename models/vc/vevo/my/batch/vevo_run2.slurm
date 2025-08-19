@@ -284,9 +284,27 @@ cd "${CODE_DIR}"
 WAV_DIR="models/vc/vevo/wav"
 mkdir -p "$WAV_DIR"
 
-# 如缺少示例输入音频，则自动生成占位测试音频，避免 FileNotFoundError
+# 如缺少示例输入音频，则优先拉取官方示例音频（失败时再回退占位波形）
 if [ ! -f "${WAV_DIR}/source.wav" ] || [ ! -f "${WAV_DIR}/arabic_male.wav" ] || [ ! -f "${WAV_DIR}/mandarin_female.wav" ]; then
-  "$PYTHON_BIN" - <<'PY'
+  echo "[data] fetching official sample wavs from Amphion repo" | tee -a "${LOG_DIR}/run-info.txt"
+  URL_BASE="https://raw.githubusercontent.com/open-mmlab/Amphion/main/models/vc/vevo/wav"
+  fetch_sample() {
+    local name="$1"; local url="${URL_BASE}/${name}"; local out="${WAV_DIR}/${name}"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --retry 3 -o "$out" "$url"
+    else
+      return 1
+    fi
+  }
+  # 尝试下载三个示例
+  ok=1
+  for f in source.wav arabic_male.wav mandarin_female.wav; do
+    [ -f "${WAV_DIR}/$f" ] || fetch_sample "$f" || ok=0
+  done
+  # 若仍缺失任何一个，则回退生成短占位音频，避免报错中断
+  if [ "$ok" = "0" ] || [ ! -f "${WAV_DIR}/source.wav" ] || [ ! -f "${WAV_DIR}/arabic_male.wav" ] || [ ! -f "${WAV_DIR}/mandarin_female.wav" ]; then
+    echo "[data] sample download failed or incomplete -> fallback to placeholders" | tee -a "${LOG_DIR}/run-info.txt"
+    "$PYTHON_BIN" - <<'PY'
 import numpy as np, soundfile as sf, os
 base=os.path.join('models','vc','vevo','wav')
 os.makedirs(base, exist_ok=True)
@@ -298,6 +316,7 @@ sf.write(os.path.join(base,'arabic_male.wav'),sig*0.8,sr)
 sf.write(os.path.join(base,'mandarin_female.wav'),sig*0.6,sr)
 print('Prepared placeholder wavs in', base)
 PY
+  fi
 fi
 
 for mode in timbre style voice tts; do
