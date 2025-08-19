@@ -171,34 +171,53 @@ except Exception as e:
     print('[dep] torchvision check skipped:', e)
 PY
 
-# LangSegment 兼容性补丁：若缺少必要符号，则注入轻量 shim
+# LangSegment 兼容性补丁：无论安装版本如何，注入完整 shim 覆盖所需符号
 "$PYTHON_BIN" - <<PY
-import os, sys
-need_shim = False
-try:
-    import LangSegment
-    need_shim = not (hasattr(LangSegment, 'setfilters') and hasattr(LangSegment, 'getTexts'))
-except Exception:
-    need_shim = True
-
+import os
 shim_root = os.environ.get('SHIM_ROOT')
-if need_shim and shim_root:
-    pkg_dir = os.path.join(shim_root, 'LangSegment')
+pkg_dir = os.path.join(shim_root, 'LangSegment') if shim_root else None
+if pkg_dir:
     os.makedirs(pkg_dir, exist_ok=True)
     with open(os.path.join(pkg_dir, '__init__.py'), 'w') as f:
         f.write('''\
 _filters = ['en']
+
 def setfilters(fs):
     global _filters
     if isinstance(fs, (list, tuple)) and fs:
         _filters = list(fs)
+
+def getfilters():
+    return list(_filters)
+
+def setLangfilters(fs):
+    # 某些版本使用该名称
+    return setfilters(fs)
+
+def getLangfilters():
+    return getfilters()
+
 def getTexts(text):
+    # 简单切分：整体文本按当前首选语言
     lang = _filters[0] if _filters else 'en'
     return [{'text': text, 'lang': lang}]
+
+def classify(text):
+    # 返回首选语言
+    return _filters[0] if _filters else 'en'
+
+def getCounts(text):
+    return {(_filters[0] if _filters else 'en'): len(text or '')}
+
+def printList(lst):
+    try:
+        print(lst)
+    except Exception:
+        pass
 ''')
     print('[dep] LangSegment shim installed at', pkg_dir)
 else:
-    print('[dep] LangSegment ok')
+    print('[dep] LangSegment shim skipped (no SHIM_ROOT)')
 PY
 
 # 将 shim 目录插入 PYTHONPATH（优先级高于 site-packages）
