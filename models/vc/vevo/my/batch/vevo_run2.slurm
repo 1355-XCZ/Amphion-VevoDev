@@ -15,6 +15,8 @@
 #SBATCH -J vevo-sanity
 #SBATCH -o /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.out
 #SBATCH -e /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.err
+#SBATCH --mail-user=haoguang.zhou@student.unimelb.edu.au
+#SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH -A punim2341
 
 set -euo pipefail
@@ -47,6 +49,8 @@ export VECLIB_MAXIMUM_THREADS=${VECLIB_MAXIMUM_THREADS:-1}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 export KMP_AFFINITY=${KMP_AFFINITY:-disabled}
 export ORT_NUM_THREADS=${ORT_NUM_THREADS:-1}
+# Fix onnxruntime pthread_setaffinity_np spam by disabling CPU affinity inside ORT
+export ORT_DISABLE_CPU_AFFINITY=1
 
 #############################
 # ===== 生成本次运行目录 =====
@@ -108,46 +112,6 @@ fi
 #############################
 # ===== 依赖版本预检  =====
 #############################
-# 依据 Spartan Modules 文档，尽量探测并加载常用音频工具模块（存在则加载，不存在则跳过）
-# 参考: https://dashboard.hpc.unimelb.edu.au/software/modules/
-echo "[sys] probing optional audio modules (best-effort)" | tee -a "${LOG_DIR}/run-info.txt"
-try_load_mod() {
-  local name="$1"
-  if module try-load "$name" >/dev/null 2>&1; then
-    echo "[sys] optional module loaded: $name" | tee -a "${LOG_DIR}/run-info.txt"
-  else
-    echo "[sys] optional module not present or failed (skipped): $name" | tee -a "${LOG_DIR}/run-info.txt"
-  fi
-}
-
-# 常见工具：FFmpeg、SoX、libsndfile（名字以站点为准，try-load 不会中断）
-try_load_mod FFmpeg
-try_load_mod SoX
-try_load_mod libsndfile
-
-# 二进制就绪性快速检测
-for BIN in ffmpeg sox; do
-  if command -v "$BIN" >/dev/null 2>&1; then
-    echo "[sys] found binary: $(which "$BIN")" | tee -a "${LOG_DIR}/run-info.txt"
-    "$BIN" -version 2>&1 | head -1 | tee -a "${LOG_DIR}/run-info.txt" || true
-  else
-    echo "[sys] binary not found in PATH: $BIN (ok to skip if not needed)" | tee -a "${LOG_DIR}/run-info.txt"
-  fi
-done
-
-# Python 侧快速导入检测（仅记录，不中断）
-"$PYTHON_BIN" - <<'PY' 2>/dev/null | sed 's/^/[dep-check] /' | tee -a "${LOG_DIR}/run-info.txt" || true
-def check(mod):
-    import importlib
-    spec = importlib.util.find_spec(mod)
-    print(f"python import {mod}: {'OK' if spec else 'MISSING'}")
-for m in [
-    'librosa','soundfile','onnxruntime','encodec','vocos','phonemizer',
-    'g2p_en','jieba','cn2an','pypinyin','LangSegment','pyopenjtalk','pykakasi'
-]:
-    check(m)
-PY
-
 echo "==== DEP CHECK ====" | tee -a "${LOG_DIR}/run-info.txt"
 CURR_TRF=$("$PYTHON_BIN" - <<'PY'
 try:
