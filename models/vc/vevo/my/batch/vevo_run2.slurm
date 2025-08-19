@@ -106,9 +106,8 @@ case "$CURR_TRF" in
 esac
 
 # 额外：缺失 LangSegment 则自动安装（用于 TTS g2p）
-if ! "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1; then
-import importlib
-import sys
+if ! "$PYTHON_BIN" - >/dev/null 2>&1 <<'PY'
+import importlib, sys
 sys.exit(0 if importlib.util.find_spec('LangSegment') else 1)
 PY
 then
@@ -131,7 +130,10 @@ REQ_PKGS=(
   encodec vocos
 )
 for PKG in "${REQ_PKGS[@]}"; do
-  if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('${PKG.split(".")[0]}') else 1)" >/dev/null 2>&1; then
+  MOD="$PKG"
+  [ "$PKG" = "ruamel.yaml" ] && MOD="ruamel"
+  [ "$PKG" = "ffmpeg-python" ] && MOD="ffmpeg"
+  if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('${MOD}') else 1)" >/dev/null 2>&1; then
     echo "[dep] installing ${PKG}" | tee -a "${LOG_DIR}/run-info.txt"
     "$PYTHON_BIN" -m pip install "${PKG}" | tee -a "${LOG_DIR}/run-info.txt" || true
   fi
