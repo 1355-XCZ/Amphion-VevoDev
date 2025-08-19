@@ -58,6 +58,10 @@ OUT_DIR="${RUN_DIR}/outputs"
 STAT_DIR="${RUN_DIR}/stats"
 mkdir -p "${LOG_DIR}" "${OUT_DIR}" "${STAT_DIR}"
 
+# 供运行期兼容模块的临时 shim 目录
+SHIM_ROOT="${RUN_DIR}/shims"
+mkdir -p "${SHIM_ROOT}"
+
 #############################
 # ===== 加载与激活环境  =====
 #############################
@@ -166,6 +170,39 @@ try:
 except Exception as e:
     print('[dep] torchvision check skipped:', e)
 PY
+
+# LangSegment 兼容性补丁：若缺少必要符号，则注入轻量 shim
+"$PYTHON_BIN" - <<PY
+import os, sys
+need_shim = False
+try:
+    import LangSegment
+    need_shim = not (hasattr(LangSegment, 'setfilters') and hasattr(LangSegment, 'getTexts'))
+except Exception:
+    need_shim = True
+
+shim_root = os.environ.get('SHIM_ROOT')
+if need_shim and shim_root:
+    pkg_dir = os.path.join(shim_root, 'LangSegment')
+    os.makedirs(pkg_dir, exist_ok=True)
+    with open(os.path.join(pkg_dir, '__init__.py'), 'w') as f:
+        f.write('''\
+_filters = ['en']
+def setfilters(fs):
+    global _filters
+    if isinstance(fs, (list, tuple)) and fs:
+        _filters = list(fs)
+def getTexts(text):
+    lang = _filters[0] if _filters else 'en'
+    return [{'text': text, 'lang': lang}]
+''')
+    print('[dep] LangSegment shim installed at', pkg_dir)
+else:
+    print('[dep] LangSegment ok')
+PY
+
+# 将 shim 目录插入 PYTHONPATH（优先级高于 site-packages）
+export PYTHONPATH="${SHIM_ROOT}:${PYTHONPATH}"
 
 # 若 monotonic_align 扩展不可用则自动编译安装（Cython）
 if ! "$PYTHON_BIN" -c "import importlib,sys; sys.exit(0 if importlib.util.find_spec('monotonic_align.core') else 1)" >/dev/null 2>&1; then
