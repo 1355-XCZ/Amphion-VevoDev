@@ -61,6 +61,8 @@ eval "$(conda shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
 # 确保 Python 能导入项目内模块（更稳健）
+# 避免 set -u 下 PYTHONPATH 未定义导致报错
+: "${PYTHONPATH:=}"
 export PYTHONPATH="${CODE_DIR}:${PYTHONPATH}"
 
 # 可选：若集群提供模块，可自动加载（不存在则跳过）
