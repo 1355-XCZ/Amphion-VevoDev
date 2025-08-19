@@ -65,10 +65,10 @@ conda activate "${CONDA_ENV}"
 : "${PYTHONPATH:=}"
 export PYTHONPATH="${CODE_DIR}:${PYTHONPATH}"
 
-# 可选：若集群提供模块，可自动加载（不存在则跳过）
-module -t avail ffmpeg   >/dev/null 2>&1 && module load ffmpeg   || true
-module -t avail espeak   >/dev/null 2>&1 && module load espeak   || true
-module -t avail espeak-ng>/dev/null 2>&1 && module load espeak-ng|| true
+# （已移除）自动加载系统模块以避免噪声日志；如需可手动开启
+# module -t avail ffmpeg   >/dev/null 2>&1 && module load ffmpeg   >/dev/null 2>&1 || true
+# module -t avail espeak   >/dev/null 2>&1 && module load espeak   >/dev/null 2>&1 || true
+# module -t avail espeak-ng>/dev/null 2>&1 && module load espeak-ng>/dev/null 2>&1 || true
 
 #############################
 # ===== 运行前信息快照  =====
