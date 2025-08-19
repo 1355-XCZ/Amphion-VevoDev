@@ -67,6 +67,9 @@ mkdir -p "${SHIM_ROOT}"
 #############################
 module purge
 module load Anaconda3/2024.02-1
+## Per Spartan modules docs, load a toolchain before app modules
+## espeak-ng/1.52 lives under GCC/11.3.0 + OpenMPI/4.1.4 (foss/2022a includes these)
+module load foss/2022a || { echo "[sys] ERROR: failed to load toolchain foss/2022a" | tee -a "${LOG_DIR}/run-info.txt"; exit 1; }
 eval "$(conda shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
@@ -83,12 +86,24 @@ echo "PYTHON_BIN: $PYTHON_BIN" | tee -a "${LOG_DIR}/run-info.txt"
 
 # 系统模块加载：espeak-ng 是 phonemizer 的必需依赖
 echo "[sys] loading system modules" | tee -a "${LOG_DIR}/run-info.txt"
-module load espeak-ng/1.52 >/dev/null 2>&1 && {
+module load espeak-ng/1.52 && {
   echo "[sys] espeak-ng/1.52 module loaded successfully" | tee -a "${LOG_DIR}/run-info.txt"
   espeak-ng --version 2>/dev/null | head -1 | tee -a "${LOG_DIR}/run-info.txt" || true
+  # Verify espeak-ng is in PATH
+  which espeak-ng | tee -a "${LOG_DIR}/run-info.txt" || echo "[sys] WARNING: espeak-ng not found in PATH" | tee -a "${LOG_DIR}/run-info.txt"
 } || {
-  echo "[sys] WARNING: espeak-ng/1.52 module load failed, may cause phonemizer errors" | tee -a "${LOG_DIR}/run-info.txt"
+  echo "[sys] ERROR: espeak-ng/1.52 module load failed, phonemizer will not work" | tee -a "${LOG_DIR}/run-info.txt"
+  exit 1
 }
+
+# Minimal import test (no source changes): ensure phonemizer can init EspeakBackend
+echo "[sys] testing phonemizer EspeakBackend import" | tee -a "${LOG_DIR}/run-info.txt"
+if ! "$PYTHON_BIN" -c "from phonemizer.backend import EspeakBackend; EspeakBackend('en-us'); print('OK')" >/dev/null 2>&1; then
+  echo "[sys] ERROR: phonemizer EspeakBackend import failed; check espeak-ng module/toolchain" | tee -a "${LOG_DIR}/run-info.txt"
+  exit 1
+else
+  echo "[sys] phonemizer EspeakBackend test: SUCCESS" | tee -a "${LOG_DIR}/run-info.txt"
+fi
 
 #############################
 # ===== 依赖版本预检  =====
