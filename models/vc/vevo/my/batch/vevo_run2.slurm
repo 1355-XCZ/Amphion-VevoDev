@@ -72,6 +72,29 @@ echo "PYTHON_BIN: $PYTHON_BIN" | tee -a "${LOG_DIR}/run-info.txt"
 # module -t avail espeak-ng>/dev/null 2>&1 && module load espeak-ng>/dev/null 2>&1 || true
 
 #############################
+# ===== 依赖版本预检  =====
+#############################
+echo "==== DEP CHECK ====" | tee -a "${LOG_DIR}/run-info.txt"
+CURR_TRF=$("$PYTHON_BIN" - <<'PY'
+try:
+    import transformers as t
+    print(getattr(t, '__version__', '0'))
+except Exception:
+    print('0')
+PY
+)
+echo "transformers version: ${CURR_TRF}" | tee -a "${LOG_DIR}/run-info.txt"
+case "$CURR_TRF" in
+  4.41.*) echo "[dep] transformers is compatible" | tee -a "${LOG_DIR}/run-info.txt" ;;
+  *)
+    echo "[dep] fixing transformers to 4.41.2 (and tokenizers<0.20)" | tee -a "${LOG_DIR}/run-info.txt"
+    "$PYTHON_BIN" -m pip install --upgrade "transformers==4.41.2" "tokenizers<0.20" | tee -a "${LOG_DIR}/run-info.txt"
+    NEW_TRF=$("$PYTHON_BIN" -c "import transformers,sys; print(transformers.__version__)" 2>/dev/null || echo "unknown")
+    echo "[dep] transformers now: ${NEW_TRF}" | tee -a "${LOG_DIR}/run-info.txt"
+  ;;
+esac
+
+#############################
 # ===== 预下载模型权重  =====
 #############################
 # 首次运行建议开启（默认 1）；设置 PREFETCH=0 可跳过
