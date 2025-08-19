@@ -81,10 +81,14 @@ PYTHON_BIN="${CONDA_PREFIX:-}/bin/python"
 [ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(which python)"
 echo "PYTHON_BIN: $PYTHON_BIN" | tee -a "${LOG_DIR}/run-info.txt"
 
-# （已移除）自动加载系统模块以避免噪声日志；如需可手动开启
-# module -t avail ffmpeg   >/dev/null 2>&1 && module load ffmpeg   >/dev/null 2>&1 || true
-# module -t avail espeak   >/dev/null 2>&1 && module load espeak   >/dev/null 2>&1 || true
-# module -t avail espeak-ng>/dev/null 2>&1 && module load espeak-ng>/dev/null 2>&1 || true
+# 系统模块加载：espeak-ng 是 phonemizer 的必需依赖
+echo "[sys] loading system modules" | tee -a "${LOG_DIR}/run-info.txt"
+module load espeak-ng/1.52 >/dev/null 2>&1 && {
+  echo "[sys] espeak-ng/1.52 module loaded successfully" | tee -a "${LOG_DIR}/run-info.txt"
+  espeak-ng --version 2>/dev/null | head -1 | tee -a "${LOG_DIR}/run-info.txt" || true
+} || {
+  echo "[sys] WARNING: espeak-ng/1.52 module load failed, may cause phonemizer errors" | tee -a "${LOG_DIR}/run-info.txt"
+}
 
 #############################
 # ===== 依赖版本预检  =====
