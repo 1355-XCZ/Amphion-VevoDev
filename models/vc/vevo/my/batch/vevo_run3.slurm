@@ -77,6 +77,10 @@ module load foss/2022a || { echo "[sys] ERROR: failed to load toolchain foss/202
 eval "$(conda shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
+# CUDA/cuDNN for ONNX Runtime GPU provider
+module load CUDA/12.4.1
+module load cuDNN/9.6.0.74-CUDA-12.4.1
+
 # 确保 Python 能导入项目内模块（更稳健）
 # 避免 set -u 下 PYTHONPATH 未定义导致报错
 : "${PYTHONPATH:=}"
