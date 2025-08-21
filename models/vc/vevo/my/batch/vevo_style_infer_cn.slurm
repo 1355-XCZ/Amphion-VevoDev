@@ -1,8 +1,8 @@
 #!/bin/bash
 ###############################################################################
-#  文件名: vevo_style_infer.slurm
-#  用途  : Spartan 上批量运行 Vevo-Style 推理：
-#          - content: 示例源音频 models/vc/vevo/wav/source.wav
+#  文件名: vevo_style_infer_cn.slurm
+#  用途  : Spartan 上批量运行 Vevo-Style 推理（中文示例 content）
+#          - content: 中文示例 models/vc/vevo/wav/mandarin_female.wav
 #          - style  : 你分割好的音频（整目录）
 ###############################################################################
 
@@ -15,7 +15,7 @@
 #SBATCH -c 2
 #SBATCH --mem=8G
 #SBATCH -t 02:00:00
-#SBATCH -J vevo-style
+#SBATCH -J vevo-style-cn
 #SBATCH -o /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.out
 #SBATCH -e /data/gpfs/projects/punim2341/haoguangzhou/logs/%x-%j.err
 #SBATCH --mail-user=haoguang.zhou@student.unimelb.edu.au
