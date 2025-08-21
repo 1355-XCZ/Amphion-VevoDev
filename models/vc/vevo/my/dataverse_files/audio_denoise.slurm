@@ -168,8 +168,8 @@ cd "${CODE_DIR}"
 #############################
 echo "==== STARTING AUDIO DENOISING ====" | tee -a "${LOG_DIR}/run-info.txt"
 
-# 处理策略选择
-PROCESSING_MODE=${PROCESSING_MODE:-"standard"}  # light, standard, advanced
+# 处理策略选择（默认高级：demucs + noisereduce + VAD）
+PROCESSING_MODE=${PROCESSING_MODE:-"advanced"}  # light, standard, advanced
 
 case "$PROCESSING_MODE" in
     light)
