@@ -78,6 +78,11 @@ class AutoregressiveTransformer(nn.Module):
 
         self.model = LlamaForCausalLM(self.config)
 
+        # === 研究用：可配置上下文窗口 ===
+        # 从配置文件读取，便于对比实验 (1600/2000/2400)
+        self.max_context = getattr(getattr(self, 'cfg', None), 'max_context', 2000)
+        self.max_new_tokens = getattr(getattr(self, 'cfg', None), 'max_new_tokens', 800)
+
     def forward(
         self,
         input_ids,
@@ -300,12 +305,32 @@ class AutoregressiveTransformer(nn.Module):
                 prompt_output_emb = self.model.model.embed_tokens(prompt_output_ids)
                 llama_input_emb = torch.cat([llama_input_emb, prompt_output_emb], dim=1)
 
+            # === Inference window control BEGIN ===
+            # 旧逻辑：不做截断，直接用 max_length 控制总长度
+            # 保留注释以便回退
+            # input_length = llama_input_emb.shape[1]
+            # gen_tokens = self.model.generate(
+            #     inputs_embeds=llama_input_emb,
+            #     do_sample=True,
+            #     max_length=max_length,
+            #     pad_token_id=self.pad_token_id,
+            #     eos_token_id=self.output_eos_token_id,
+            #     temperature=temperature,
+            #     top_k=top_k,
+            #     top_p=top_p,
+            #     repetition_penalty=repeat_penalty,
+            #     min_new_tokens=min_new_tokens,
+            # )
+
+            # 研究用：截断超长上下文（保留话语后面信息=右截断）
+            if llama_input_emb.shape[1] > self.max_context:
+                llama_input_emb = llama_input_emb[:, -self.max_context:, :]  # 保留后面
             input_length = llama_input_emb.shape[1]
 
             gen_tokens = self.model.generate(
                 inputs_embeds=llama_input_emb,
                 do_sample=True,
-                max_length=max_length,
+                max_new_tokens=self.max_new_tokens,  # 控制生成长度
                 pad_token_id=self.pad_token_id,
                 eos_token_id=self.output_eos_token_id,
                 temperature=temperature,
@@ -314,17 +339,38 @@ class AutoregressiveTransformer(nn.Module):
                 repetition_penalty=repeat_penalty,
                 min_new_tokens=min_new_tokens,
             )
+            # === Inference window control END ===
         else:
             # When not using global style encoder, prompt_output_ids is required
             assert prompt_output_ids is not None
 
             llama_input_ids = torch.cat([input_ids, prompt_output_ids], dim=-1)
+
+            # === Inference window control BEGIN ===
+            # 旧逻辑：不做截断，直接用 max_length
+            # input_length = llama_input_ids.shape[1]
+            # gen_tokens = self.model.generate(
+            #     llama_input_ids,
+            #     do_sample=True,
+            #     max_length=max_length,
+            #     pad_token_id=self.pad_token_id,
+            #     eos_token_id=self.output_eos_token_id,
+            #     temperature=temperature,
+            #     top_k=top_k,
+            #     top_p=top_p,
+            #     repetition_penalty=repeat_penalty,
+            #     min_new_tokens=min_new_tokens,
+            # )
+
+            # 研究用：截断超长上下文（保留话语后面信息=右截断）
+            if llama_input_ids.shape[1] > self.max_context:
+                llama_input_ids = llama_input_ids[:, -self.max_context:]  # 保留后面
             input_length = llama_input_ids.shape[1]
 
             gen_tokens = self.model.generate(
                 llama_input_ids,
                 do_sample=True,
-                max_length=max_length,
+                max_new_tokens=self.max_new_tokens,
                 pad_token_id=self.pad_token_id,
                 eos_token_id=self.output_eos_token_id,
                 temperature=temperature,
@@ -333,6 +379,7 @@ class AutoregressiveTransformer(nn.Module):
                 repetition_penalty=repeat_penalty,
                 min_new_tokens=min_new_tokens,
             )
+            # === Inference window control END ===
 
             gen_tokens = gen_tokens[:, input_length:]
 

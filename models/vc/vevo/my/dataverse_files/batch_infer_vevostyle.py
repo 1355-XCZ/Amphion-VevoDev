@@ -17,6 +17,7 @@
 import argparse
 import os
 from pathlib import Path
+import subprocess
 from typing import List
 
 import torch
@@ -26,7 +27,7 @@ from huggingface_hub import snapshot_download
 from models.vc.vevo.vevo_utils import VevoInferencePipeline, save_audio
 
 
-def build_pipeline(device: torch.device) -> VevoInferencePipeline:
+def build_pipeline(device: torch.device, ar_cfg_path: str = None) -> VevoInferencePipeline:
     """按照 infer_vevostyle.py 的方式构建推理管线，一次加载复用。"""
     # ===== Content Tokenizer =====
     local_dir = snapshot_download(
@@ -55,7 +56,9 @@ def build_pipeline(device: torch.device) -> VevoInferencePipeline:
         cache_dir="./ckpts/Vevo",
         allow_patterns=["contentstyle_modeling/Vq32ToVq8192/*"],
     )
-    ar_cfg_path = "./models/vc/vevo/config/Vq32ToVq8192.json"
+    # 使用传入的配置文件路径，或默认路径
+    if ar_cfg_path is None:
+        ar_cfg_path = "./models/vc/vevo/config/Vq32ToVq8192.json"
     ar_ckpt_path = os.path.join(local_dir, "contentstyle_modeling/Vq32ToVq8192")
 
     # ===== Flow Matching Transformer =====
@@ -96,6 +99,28 @@ def collect_style_wavs(style_dir: Path) -> List[Path]:
     return sorted(list(style_dir.rglob("*.wav")))
 
 
+def ffmpeg_trim_wav(input_path: str, output_path: str, max_seconds: float) -> bool:
+    """用 ffmpeg 裁剪音频到前 max_seconds 秒，输出为 24kHz/单声道 WAV。"""
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        input_path,
+        "-t",
+        str(max_seconds),
+        "-ar",
+        "24000",
+        "-ac",
+        "1",
+        output_path,
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        return res.returncode == 0 and Path(output_path).exists() and Path(output_path).stat().st_size > 0
+    except Exception:
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Batch Vevo-Style inference")
     parser.add_argument("--style-dir", required=True, help="风格参考音频根目录（分割产物）")
@@ -105,7 +130,10 @@ def main():
         default="models/vc/vevo/wav/source.wav",
         help="示例源音频（content）",
     )
+    parser.add_argument("--style-max-seconds", type=float, default=10.0, help="style 裁剪秒数（防止过长导致生成溢出）")
+    parser.add_argument("--content-max-seconds", type=float, default=8.0, help="content 裁剪秒数（可选，防止过长）")
     parser.add_argument("--limit", type=int, default=None, help="最多处理多少个文件（调试用）")
+    parser.add_argument("--config", type=str, default=None, help="AR 模型配置文件路径（用于上下文长度研究）")
     args = parser.parse_args()
 
     style_root = Path(args.style_dir)
@@ -116,13 +144,27 @@ def main():
     print(f"[device] {device}")
 
     print("[init] building Vevo pipeline (first-time will download from HF cache)...")
-    pipeline = build_pipeline(device)
+    if args.config:
+        print(f"[config] using custom AR config: {args.config}")
+    pipeline = build_pipeline(device, ar_cfg_path=args.config)
     print("[init] pipeline ready")
 
     style_wavs = collect_style_wavs(style_root)
     if args.limit:
         style_wavs = style_wavs[: args.limit]
     print(f"[data] found {len(style_wavs)} style wavs under {style_root}")
+
+    # 为裁剪文件准备临时目录
+    tmp_root = out_root / "_tmp_trim"
+    tmp_root.mkdir(parents=True, exist_ok=True)
+
+    # 预裁剪 content（如需要）
+    content_path = Path(args.content_wav)
+    trimmed_content = tmp_root / ("content_trim.wav")
+    content_used = str(content_path)
+    if args.content_max_seconds and args.content_max_seconds > 0:
+        if ffmpeg_trim_wav(str(content_path), str(trimmed_content), args.content_max_seconds):
+            content_used = str(trimmed_content)
 
     # 逐个执行风格迁移
     for idx, style_wav in enumerate(style_wavs, 1):
@@ -131,14 +173,27 @@ def main():
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         print(f"[{idx}/{len(style_wavs)}] style={style_wav} -> {out_path}")
-        # 仅使用 style 作为风格参考；content 使用固定示例音频
-        gen_audio = pipeline.inference_ar_and_fm(
-            src_wav_path=args.content_wav,
-            src_text=None,
-            style_ref_wav_path=str(style_wav),
-            timbre_ref_wav_path=args.content_wav,
-        )
-        save_audio(gen_audio, output_path=str(out_path))
+
+        # 裁剪 style，避免过长导致 AR 生成长度校验失败
+        trimmed_style = tmp_root / (rel.parent.as_posix().replace('/', '_') + "_" + style_wav.stem + "_trim.wav")
+        trimmed_style.parent.mkdir(parents=True, exist_ok=True)
+        style_used = str(style_wav)
+        if args.style_max_seconds and args.style_max_seconds > 0:
+            if ffmpeg_trim_wav(str(style_wav), str(trimmed_style), args.style_max_seconds):
+                style_used = str(trimmed_style)
+
+        try:
+            gen_audio = pipeline.inference_ar_and_fm(
+                src_wav_path=content_used,
+                src_text=None,
+                style_ref_wav_path=style_used,
+                timbre_ref_wav_path=content_used,
+            )
+            save_audio(gen_audio, output_path=str(out_path))
+        except Exception as e:
+            print(f"[warn] failed on {style_wav}: {e}")
+            # 跳过该条，继续下一个
+            continue
 
     print("[done] all files processed.")
 
