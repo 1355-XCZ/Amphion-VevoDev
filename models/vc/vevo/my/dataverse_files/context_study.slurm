@@ -59,15 +59,50 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] === 上下文窗口长度研究开始 ===" 
 echo "[批处理] 批次编号: ${BATCH_ID}" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
 echo "[输出目录] ${BASE_OUT_DIR}" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
 
-# 激活 conda 环境
-source "${HOME}/miniconda3/etc/profile.d/conda.sh"
+# 加载模块系统（参考 vevo_run3.slurm）
+module purge
+module load Anaconda3/2024.02-1
+module load foss/2022a || { echo "[sys] ERROR: failed to load toolchain foss/2022a" | tee -a "${PROJECT_ROOT}/logs/context_study.log"; exit 1; }
+eval "$(conda shell.bash hook)"
 conda activate "${CONDA_ENV}"
-echo "[conda] 已激活环境: ${CONDA_ENV}" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
+
+# CUDA/cuDNN for GPU support
+module load CUDA/12.4.1
+module load cuDNN/9.6.0.74-CUDA-12.4.1
+
+# 线程控制（参考 vevo_run3.slurm）
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+export BLIS_NUM_THREADS=${BLIS_NUM_THREADS:-1}
+export NUMEXPR_NUM_THREADS=${NUMEXPR_NUM_THREADS:-1}
+export VECLIB_MAXIMUM_THREADS=${VECLIB_MAXIMUM_THREADS:-1}
+export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
+export KMP_AFFINITY=${KMP_AFFINITY:-disabled}
+export ORT_NUM_THREADS=${ORT_NUM_THREADS:-1}
+export ORT_DISABLE_CPU_AFFINITY=1
+
+# 设置 PYTHONPATH
+: "${PYTHONPATH:=}"
+export PYTHONPATH="${CODE_DIR}:${PYTHONPATH}"
 
 # 切换到代码目录
 cd "${CODE_DIR}"
-PYTHON_BIN=$(which python)
+
+# 选用当前环境的 python
+PYTHON_BIN="${CONDA_PREFIX:-}/bin/python"
+[ -x "$PYTHON_BIN" ] || PYTHON_BIN="$(which python)"
+echo "[conda] 已激活环境: ${CONDA_ENV}" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
 echo "[python] 使用: ${PYTHON_BIN}" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
+
+# 加载必要的系统模块
+echo "[sys] loading system modules" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
+module load espeak-ng/1.52 && {
+  echo "[sys] espeak-ng/1.52 module loaded successfully" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
+} || {
+  echo "[sys] ERROR: espeak-ng/1.52 module load failed" | tee -a "${PROJECT_ROOT}/logs/context_study.log"
+  exit 1
+}
 
 #############################
 # ===== 依赖检查与安装  =====
