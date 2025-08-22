@@ -121,6 +121,8 @@ def main():
         
         if out_path.exists() and not args.force_overwrite:
             existing_count += 1
+            if existing_count <= 5:  # 显示前5个跳过的文件
+                print(f"[skip] {out_path.name} already exists")
         else:
             to_process.append((style_wav, out_path))
     
