@@ -34,6 +34,9 @@ module load espeak-ng/1.52 || true
 eval "$(conda shell.bash hook)"
 conda activate vevo_env
 
+# 确保 Python 能导入项目根目录（解决 ModuleNotFoundError: models）
+export PYTHONPATH="${VEVO_ROOT}:${PYTHONPATH:-}"
+
 PYTHON_BIN=$(which python)
 echo "[python] ${PYTHON_BIN}"
 
