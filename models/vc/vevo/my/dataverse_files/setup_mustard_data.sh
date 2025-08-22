@@ -37,10 +37,10 @@ fi
 #############################
 # ===== 解压音频数据 =====
 #############################
-if [[ ! -d "data/mmsd_raw_data" ]]; then
+if [[ ! -d "data/context_final" ]] || [[ ! -d "data/utterances_final" ]]; then
     echo "[解压] 正在解压音频数据..."
     cd data
-    unzip -q mmsd_raw_data.zip
+    unzip -o mmsd_raw_data.zip
     echo "[解压] 音频数据解压完成"
     cd ..
 else
@@ -51,7 +51,7 @@ fi
 # ===== 检查音频文件 =====
 #############################
 echo "[检查] 统计音频文件..."
-AUDIO_COUNT=$(find data/mmsd_raw_data -name "*.wav" -o -name "*.mp4" -o -name "*.mp3" 2>/dev/null | wc -l)
+AUDIO_COUNT=$(find data/context_final data/utterances_final -name "*.wav" -o -name "*.mp4" -o -name "*.mp3" 2>/dev/null | wc -l)
 echo "[统计] 找到 ${AUDIO_COUNT} 个音频/视频文件"
 
 if [[ ${AUDIO_COUNT} -eq 0 ]]; then
@@ -65,9 +65,9 @@ fi
 echo "[处理] 开始音频格式标准化..."
 
 # 查找所有音频/视频文件并转换为标准 WAV 格式
-find data/mmsd_raw_data -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.wav" \) | while read -r file; do
+find data/context_final data/utterances_final -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.wav" \) | while read -r file; do
     # 获取相对路径和文件名
-    rel_path=$(realpath --relative-to="data/mmsd_raw_data" "$file")
+    rel_path=$(realpath --relative-to="data" "$file")
     output_dir="${AUDIO_OUTPUT_DIR}/$(dirname "$rel_path")"
     filename=$(basename "$file")
     name_without_ext="${filename%.*}"
