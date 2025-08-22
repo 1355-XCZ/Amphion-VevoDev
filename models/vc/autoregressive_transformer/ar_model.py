@@ -71,6 +71,7 @@ class AutoregressiveTransformer(nn.Module):
             intermediate_size=self.intermediate_size,
             num_hidden_layers=self.num_hidden_layers,
             num_attention_heads=self.num_attention_heads,
+            max_position_embeddings=4096,  # 进一步增加位置编码上限，支持更长音频序列
             pad_token_id=self.pad_token_id,
             bos_token_id=self.output_bos_token_id,
             eos_token_id=self.output_eos_token_id,
