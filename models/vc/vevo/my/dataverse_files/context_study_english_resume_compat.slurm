@@ -122,7 +122,7 @@ for ctx in ${CONTEXT_LENGTHS}; do
   echo "=== 开始上下文长度 ${ctx} ==="
   process_ctx "${ctx}"
   echo "=== 完成上下文长度 ${ctx} ==="
-Done
+done
 
 TOTAL=$(find "${BASE_OUT_DIR}" -name "*_vevostyle.wav" | wc -l)
 echo "[总计] 已生成 ${TOTAL} 条"
