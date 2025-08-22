@@ -66,11 +66,18 @@ echo "[处理] 开始音频格式标准化..."
 
 # 查找所有音频/视频文件并转换为标准 WAV 格式
 find "${MUSTARD_DIR}/data/context_final" "${MUSTARD_DIR}/data/utterances_final" -type f \( -name "*.mp4" -o -name "*.mp3" -o -name "*.wav" \) | while read -r file; do
-    # 获取相对路径和文件名
-    rel_path=$(realpath --relative-to="${MUSTARD_DIR}/data" "$file")
-    output_dir="${AUDIO_OUTPUT_DIR}/$(dirname "$rel_path")"
+    # 获取相对路径和文件名（简化路径处理）
+    if [[ "$file" == *"/context_final/"* ]]; then
+        subdir="context_final"
+    elif [[ "$file" == *"/utterances_final/"* ]]; then
+        subdir="utterances_final"
+    else
+        subdir="unknown"
+    fi
+    
     filename=$(basename "$file")
     name_without_ext="${filename%.*}"
+    output_dir="${AUDIO_OUTPUT_DIR}/${subdir}"
     output_file="${output_dir}/${name_without_ext}.wav"
     
     # 创建输出目录
@@ -84,9 +91,9 @@ find "${MUSTARD_DIR}/data/context_final" "${MUSTARD_DIR}/data/utterances_final" 
     # 使用 ffmpeg 转换为标准格式
     # 16kHz, 单声道, 16-bit PCM (与 Vevo 配置一致)
     if ffmpeg -i "$file" -ar 16000 -ac 1 -c:a pcm_s16le "$output_file" -y >/dev/null 2>&1; then
-        echo "[转换] ✓ $rel_path -> $(basename "$output_file")"
+        echo "[转换] ✓ ${subdir}/$(basename "$file") -> $(basename "$output_file")"
     else
-        echo "[转换] ✗ 转换失败: $rel_path"
+        echo "[转换] ✗ 转换失败: ${subdir}/$(basename "$file")"
     fi
 done
 
